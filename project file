@@ -1,0 +1,151 @@
+import tkinter as tk
+from tkinter import messagebox
+import sqlite3
+from fpdf import FPDF
+import datetime
+import os  # For opening the PDF
+
+# Database setup
+conn = sqlite3.connect('gold_shop.db')
+cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS bills (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        mobile TEXT,
+        total REAL,
+        paid REAL,
+        remaining REAL,
+        date TEXT
+    )
+''')
+conn.commit()
+
+class GoldBillingApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Gold Shop Billing System")
+        self.items = []
+
+        # GUI Layout
+        tk.Label(root, text="Customer Name").grid(row=0, column=0)
+        self.name_entry = tk.Entry(root)
+        self.name_entry.grid(row=0, column=1)
+
+        tk.Label(root, text="Mobile").grid(row=0, column=2)
+        self.mobile_entry = tk.Entry(root)
+        self.mobile_entry.grid(row=0, column=3)
+
+        tk.Label(root, text="Item Name").grid(row=1, column=0)
+        self.item_entry = tk.Entry(root)
+        self.item_entry.grid(row=1, column=1)
+
+        tk.Label(root, text="Weight (g)").grid(row=1, column=2)
+        self.weight_entry = tk.Entry(root)
+        self.weight_entry.grid(row=1, column=3)
+
+        tk.Label(root, text="Rate (per g)").grid(row=2, column=0)
+        self.rate_entry = tk.Entry(root)
+        self.rate_entry.grid(row=2, column=1)
+
+        tk.Label(root, text="Quantity").grid(row=2, column=2)
+        self.qty_entry = tk.Entry(root)
+        self.qty_entry.grid(row=2, column=3)
+
+        tk.Button(root, text="Add Item", command=self.add_item).grid(row=3, column=0, columnspan=4, pady=5)
+
+        tk.Label(root, text="Making Charges").grid(row=4, column=0)
+        self.making_entry = tk.Entry(root)
+        self.making_entry.grid(row=4, column=1)
+
+        tk.Label(root, text="Discount (%)").grid(row=4, column=2)
+        self.discount_entry = tk.Entry(root)
+        self.discount_entry.grid(row=4, column=3)
+
+        tk.Label(root, text="GST (%)").grid(row=5, column=0)
+        self.gst_entry = tk.Entry(root)
+        self.gst_entry.grid(row=5, column=1)
+
+        tk.Label(root, text="Amount Paid").grid(row=5, column=2)
+        self.paid_entry = tk.Entry(root)
+        self.paid_entry.grid(row=5, column=3)
+
+        tk.Button(root, text="Generate Bill", command=self.generate_bill).grid(row=6, column=0, columnspan=4, pady=10)
+
+    def add_item(self):
+        name = self.item_entry.get()
+        try:
+            weight = float(self.weight_entry.get())
+            rate = float(self.rate_entry.get())
+            qty = int(self.qty_entry.get())
+            price = weight * rate * qty
+            self.items.append({'name': name, 'weight': weight, 'rate': rate, 'qty': qty, 'price': price})
+            messagebox.showinfo("Item Added", f"{name} added successfully.")
+            self.item_entry.delete(0, tk.END)
+            self.weight_entry.delete(0, tk.END)
+            self.rate_entry.delete(0, tk.END)
+            self.qty_entry.delete(0, tk.END)
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid weight, rate, and quantity.")
+
+    def generate_bill(self):
+        try:
+            name = self.name_entry.get()
+            mobile = self.mobile_entry.get()
+            making = float(self.making_entry.get() or 0)
+            discount = float(self.discount_entry.get() or 0)
+            gst = float(self.gst_entry.get() or 0)
+            paid = float(self.paid_entry.get() or 0)
+
+            subtotal = sum(item['price'] for item in self.items)
+            total = subtotal + making
+            total -= (total * discount / 100)
+            total += (total * gst / 100)
+            remaining = total - paid
+            date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+            # Save to DB
+            cursor.execute("INSERT INTO bills (name, mobile, total, paid, remaining, date) VALUES (?, ?, ?, ?, ?, ?)",
+                           (name, mobile, total, paid, remaining, date))
+            conn.commit()
+
+            # Generate PDF Bill
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            pdf.cell(200, 10, txt="Gold Shop Bill Receipt", ln=True, align='C')
+            pdf.cell(200, 10, txt=f"Customer: {name}, Mobile: {mobile}", ln=True)
+            pdf.cell(200, 10, txt=f"Date: {date}", ln=True)
+            pdf.cell(200, 10, txt="Items:", ln=True)
+
+            for item in self.items:
+                line = f"{item['name']} - {item['weight']}g x Rs.{item['rate']} x {item['qty']} = Rs.{item['price']:.2f}"
+                pdf.cell(200, 10, txt=line, ln=True)
+
+            pdf.cell(200, 10, txt=f"Subtotal: Rs.{subtotal:.2f}", ln=True)
+            pdf.cell(200, 10, txt=f"Making Charges: Rs.{making}", ln=True)
+            pdf.cell(200, 10, txt=f"Discount: {discount}%", ln=True)
+            pdf.cell(200, 10, txt=f"GST: {gst}%", ln=True)
+            pdf.cell(200, 10, txt=f"Total Amount: Rs.{total:.2f}", ln=True)
+            pdf.cell(200, 10, txt=f"Amount Paid: Rs.{paid}", ln=True)
+            pdf.cell(200, 10, txt=f"Remaining: Rs.{remaining:.2f}", ln=True)
+
+            filename = f"{name.replace(' ', '_')}_bill.pdf"
+            pdf.output(filename)
+
+            # Auto-open PDF (Windows only)
+            try:
+                os.startfile(filename)
+            except:
+                pass
+
+            messagebox.showinfo("Bill Generated", f"Bill saved as {filename}")
+            self.root.destroy()
+
+        except ValueError:
+            messagebox.showerror("Error", "Please enter all values correctly.")
+
+# Launch the GUI
+root = tk.Tk()
+app = GoldBillingApp(root)
+root.mainloop()

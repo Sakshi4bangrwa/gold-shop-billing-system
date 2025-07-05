@@ -21,5 +21,5 @@ Multiple staff account support
 
 WhatsApp/SMS notification integration (optional)
 
-Mobile-ready API backend for Flutter app
+
 
